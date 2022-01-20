@@ -14,6 +14,8 @@ from tqdm.autonotebook import tqdm
 
 from jax_unirep.losses import _neg_cross_entropy_loss
 
+import joblib
+
 from .evotuning_models import mlstm1900_apply_fun
 from .optimizers import adamW
 from .utils import (
@@ -158,7 +160,7 @@ def fit(
     batch_size: int = 25,
     step_size: float = 0.0001,
     holdout_seqs: Optional[Iterable[str]] = None,
-    proj_name: str = "temp",
+    output_dir: str = "temp",
     epochs_per_print: int = 1,
     backend: str = "cpu",
 ) -> Dict:
@@ -236,7 +238,7 @@ def fit(
         about 5GB of GPU RAM.
     - `step_size`: The learning rate.
     - `holdout_seqs`: Holdout set, an optional input.
-    - `proj_name`: The directory path for weights to be output to.
+    - `output_dir`: The directory path for weights to be output to.
     - `epochs_per_print`: Number of epochs to progress before printing
         and dumping of weights.
         Must be greater than or equal to 1.
@@ -299,12 +301,12 @@ def fit(
         training_seqs_batched,
         training_seq_lens,
     ) = generate_batching_funcs(sequences, batch_size)
-    if holdout_seqs is not None:
-        (
-            holdout_len_batching_funcs,
-            holdout_seqs_batched,
-            holdout_seq_lens,
-        ) = generate_batching_funcs(holdout_seqs, batch_size)
+    # if holdout_seqs is not None:
+    #     (
+    #         holdout_len_batching_funcs,
+    #         holdout_seqs_batched,
+    #         holdout_seq_lens,
+    #     ) = generate_batching_funcs(holdout_seqs, batch_size)
 
     batch_lens = [len(batch) for batch in training_seqs_batched]
     if batch_method == "length":
@@ -351,19 +353,25 @@ def fit(
                 avg_loss_func=avg_loss_func,
             )
 
-            log_epoch_func(
+            training_loss = log_epoch_func(
                 length=length,
                 len_batching_funcs=training_len_batching_funcs,
             )
 
+            holdout_loss = None
             if holdout_seqs is not None:
-                holdout_length = choice(holdout_seq_lens)
-                log_epoch_func(
-                    length=holdout_length,
-                    len_batching_funcs=holdout_len_batching_funcs,
+                holdout_loss = log_epoch_func(
+                    sequences=holdout_seqs,
                     is_holdout_set=True,
                 )
-            dump_params(get_params(state), proj_name, current_epoch - 1)
+
+            output = {
+                'epoch': current_epoch - 1,
+                'params': get_params(state),
+                'training_loss': training_loss,
+                'holdout_loss': holdout_loss,
+            }
+            joblib.dump(output, f"{output_dir}/output.epoch.{current_epoch - 1}.joblib")
 
         logger.debug("Getting batches")
         x, y = training_len_batching_funcs[length]()
@@ -378,10 +386,11 @@ def fit(
 def log_epoch(
     current_epoch: int,
     state,
-    length: int,
-    len_batching_funcs: Dict[int, Callable],
     get_params_func: Callable,
     avg_loss_func: Callable,
+    length: int = None,
+    len_batching_funcs: Dict[int, Callable] = None,
+    sequences = None,
     is_holdout_set: bool = False,
 ):
     """
@@ -401,12 +410,17 @@ def log_epoch(
         Affects the logging text only.
     """
     state_params = get_params_func(state)
-    x, y = len_batching_funcs[length]()
+    if sequences is not None:
+        x, y = input_output_pairs(sequences)
+    elif len_batching_funcs is not None and length is not None:
+        x, y = len_batching_funcs[length]()
+    else:
+        raise ValueError("Either sequences or len_batching_funcs must be provided.")
     loss = avg_loss_func([x], [y], state_params)
     data_set = "holdout" if is_holdout_set else "training"
     logger.info(f"Calculations for {data_set} set:")
     logger.info(f"Epoch {current_epoch - 1}: Estimated average loss: {loss}. ")
-    return None
+    return loss
 
 
 def objective(
