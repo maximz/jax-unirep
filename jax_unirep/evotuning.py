@@ -367,11 +367,11 @@ def fit(
 
             output = {
                 'epoch': current_epoch - 1,
-                'params': get_params(state),
                 'training_loss': training_loss,
                 'holdout_loss': holdout_loss,
             }
-            joblib.dump(output, f"{output_dir}/output.epoch.{current_epoch - 1}.joblib")
+            joblib.dump(output, f"{output_dir}/loss.epoch.{current_epoch - 1}.joblib")
+            joblib.dump(get_params(state), f"{output_dir}/params.epoch.{current_epoch - 1}.joblib")
 
         logger.debug("Getting batches")
         x, y = training_len_batching_funcs[length]()
