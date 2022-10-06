@@ -33,20 +33,6 @@ from .utils import (
 
 logger = logging.getLogger("evotuning")
 
-
-def setup_evotuning_log():
-    logger.setLevel(logging.INFO)
-    if os.path.exists("evotuning.log"):
-        os.remove("evotuning.log")
-    fh = logging.FileHandler("evotuning.log")
-    fh.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s :: %(levelname)s :: %(message)s"
-    )
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
-
-
 def evotune_loss(params, predict, inputs, targets):
     logging.debug(f"Input shape: {inputs.shape}")
     logging.debug(f"Output shape: {targets.shape}")
@@ -252,7 +238,6 @@ def fit(
     Final optimized parameters.
     """
 
-    setup_evotuning_log()
     model_func = jit(model_func)
 
     @jit
